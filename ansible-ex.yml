@@ -1,0 +1,19 @@
+- hosts: hostaname/group/all
+  become: true #Te hace super usuario
+  remote_user: user #Podes declarar con que user te vas a conectar
+  task:
+  - name: nombre de la tarea
+    modulo: instrucciones
+  - name: instala vim
+    apt: name=vim state=present
+  - name: detiene nginx
+    service: name=nginx state=stopped
+  - name: Instala Apache2
+    apt: name=apache2 state=present update_cache=true
+    notify: #notifica al handler que si esta operacion corre el tambien debe correr
+      - name: "Reinicia el servidor web"
+  handlers: #en caso de que se instale apache2 el handler declarado reiniciara el servicio
+    - name: Reinicia el servidor web
+      service: name=apache2 state=restarted
+
+

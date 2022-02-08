@@ -1,0 +1,58 @@
+apt-get update
+apt-get install ansible
+
+Inventory
+Lista host/maquinas que se tienen que aprovisionar
+Existe un archivo en /etc/ansible/hosts que tiene el inventario global
+La cantidad de ip/hostnames se ve en cuantas ip/hostnames existen en el archivo
+Los grupos se escriben entre [] ejemplo = [dbservers] y abajo los servidores
+
+
+Comandos basicos ad-hoc
+Se usa ansible y luego un comando de un solo uso
+ej: ansible hostname -m ping (verifica si el server esta ready)
+Si el host no existe te especifica que no se puede correr la operacion, de cualquier manera el host se puede agregar
+Tambien se puede crear otro archivo hosts.txt y luego especificar con un -i
+ej: ansible hostaname -m ping -i hosts.txt
+
+Existen muchos comandos ad-hoc el comando ping es uno de los mas eseciales porq si falla entonces ya sabes que hay algun problema
+
+Comdandos para controlar modulos
+
+Si no especifico -m entonces asume que el modulo es shell, ejecuta comandos
+ansible hostname -a 'echo hola' puede correr un comando en cualquier hostname
+
+
+
+ansible hostname -m apt -a 'name=vim state=present' -b -K
+el modulo apt te deja instalar paquetes, el state es un parametro en este caso para pedir que este presente
+-b = become (sirve para hacerse sudo en caso de que sea necesario)
+-K = pide por una contrase;a para el caso de cambiar de usuario\
+
+
+Playbooks
+Basicamente es un archivo en donde se especifican las tareas a ejecutar en uno o en un grupo de hosts
+Se escriben en .yaml y se organizan como objetos
+Para iniciar los playbook seria 'ansible-playbook archivo.yml' luego si necesitas password o algun tipo
+de parametro se puede utilizar ej: 'ansible-playbook ansible-ex.yml -K'
+
+ejemplo de syntaxis: ansible-ex.yaml
+
+
+Conectarte con otro usuario
+ansible -i hosts.txt hostname/groups -m ping -u user
+
+
+ansible.cfg
+Este archivo sirve para declarar parametros para que por ejemplo no tener que usar -u para cambiar de user
+El archivo se encuentra en el mismo directorio o en /etc/ansible/ansible.cfg para hacerlo global
+Tambien se puede declarar un env variable para saber que archivo cfg estas usando
+ej: ANSIBLE_CONFIG=example.cfg
+Y tambien se puede declarar en un playbook
+ej en el ansible-ex.yml
+
+
+Handlers
+
+Son tareas que se corren cuando otras tareas terminan de forma satisfactoria.
+Ejemplo en ansible-ex.yml
