@@ -18,6 +18,19 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
+# Auto-normalizar CRLF -> LF si este script o los vecinos vienen de Windows.
+# (Evita "/usr/bin/env: 'bash\r': No such file or directory" en próximos runs.)
+SELF="${BASH_SOURCE[0]}"
+SELF_DIR="$(cd "$(dirname "$SELF")" && pwd)"
+if grep -qlI $'\r' "$SELF_DIR"/*.sh "$SELF_DIR"/*.service 2>/dev/null; then
+  warn "Detecté finales de línea CRLF — los normalizo a LF..."
+  for f in "$SELF_DIR"/*.sh "$SELF_DIR"/*.service; do
+    [[ -f "$f" ]] && sed -i 's/\r$//' "$f"
+  done
+  log "Normalizado. Volvé a correr: sudo ./install.sh"
+  exit 0
+fi
+
 ARCH="$(dpkg --print-architecture)"
 if [[ "$ARCH" != "arm64" ]]; then
   warn "Esta guia esta pensada para arm64 (detecte: $ARCH). Continuo igual, pero revisa."

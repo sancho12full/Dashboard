@@ -157,6 +157,17 @@ scp -i ~/Descargas/tu-clave.key ubuntu@TU_IP_PUBLICA:/home/valheim/backups/valhe
 
 ## 9. Consejos y troubleshooting
 
+- **`/usr/bin/env: 'bash\r': No such file or directory`:** el script tiene finales de línea de Windows (CRLF) en vez de Unix (LF). Suele pasar si bajaste/editaste los archivos en Windows. Fijalo con:
+  ```bash
+  sudo apt-get install -y dos2unix
+  dos2unix install.sh valheim-server.service
+  # o sin instalar nada:
+  # sed -i 's/\r$//' install.sh valheim-server.service
+  chmod +x install.sh
+  sudo ./install.sh
+  ```
+  El repo ya trae un `.gitattributes` que fuerza LF, así que si clonás fresco no debería volver a pasarte.
+
 - **No aparece en la lista de servidores:** esperá 3-5 min la primera vez; revisá que los puertos UDP estén abiertos _en ambos_ sitios (OCI + iptables). Probá conectar por IP directa primero.
 - **"Failed to load mono"** al arrancar: suele ser arquitectura armhf no habilitada. El script lo hace, pero si corriste algo a mano verificá con `dpkg --print-foreign-architectures` que aparezca `armhf`.
 - **CPU al 100 %:** Valheim escala mal con muchos jugadores; 2 OCPU aguantan perfecto hasta ~5 y bien hasta ~10. Si crece el grupo, subí a 4 OCPU (la A1 es flexible).
