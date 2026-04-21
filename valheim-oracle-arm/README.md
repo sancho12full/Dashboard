@@ -161,6 +161,12 @@ scp -i ~/Descargas/tu-clave.key ubuntu@TU_IP_PUBLICA:/home/valheim/backups/valhe
 
 - **`[BOX64] Error: File is not found. (./linux64/steamcmd)`:** SteamCMD es 32-bit, el binario correcto es `./linux32/steamcmd` y se corre con **Box86**, no Box64. Actualizá el script (`git pull`) y volvé a correrlo.
 
+- **`ERROR! Failed to install app '896660' (Missing configuration)`:** suele pasar por un appcache corrupto de un intento anterior, o por pasar `+@sSteamCmdForcePlatformType linux` (que Box86 a veces interpreta mal). El script ya NO usa ese flag y limpia `~/Steam/appcache` entre reintentos. Si te pasa corriendo a mano:
+  ```bash
+  sudo -u valheim rm -rf /home/valheim/Steam/appcache
+  sudo -u valheim /home/valheim/update.sh
+  ```
+
 - **`Update complete, launching...` y después muere / `Unit valheim-server.service not found`:** pasaba porque invocábamos el binario de SteamCMD directo en vez del wrapper `steamcmd.sh`, y el auto-update interno perdía `LD_LIBRARY_PATH` en el re-exec. El script actual usa `./steamcmd.sh` + binfmt y reintenta 3 veces. Si tu descarga quedó a mitad, reintentala con:
   ```bash
   sudo -u valheim /home/valheim/update.sh

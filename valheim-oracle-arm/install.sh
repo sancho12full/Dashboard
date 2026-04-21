@@ -194,8 +194,9 @@ chown valheim:valheim "$START_SCRIPT"
 cat > "$VHOME/update.sh" <<EOF
 #!/usr/bin/env bash
 set -e
+# Limpiar caché si un intento previo lo dejó inconsistente ("Missing configuration")
+rm -rf "$VHOME/Steam/appcache" 2>/dev/null || true
 exec "$VHOME/steamcmd_box86.sh" \\
-  +@sSteamCmdForcePlatformType linux \\
   +force_install_dir "$SERVER_DIR" \\
   +login anonymous \\
   +app_update 896660 validate \\
@@ -241,30 +242,51 @@ chown -R valheim:valheim "$VHOME"
 # Se hace AL FINAL, asi aunque la descarga falle (red, reintento de SteamCMD, etc.)
 # ya quedaron instalados systemd, firewall y update.sh. El usuario puede reintentar
 # con:   sudo -u valheim /home/valheim/update.sh
+#
+# NOTA: no usamos +@sSteamCmdForcePlatformType linux — Valheim server es nativo
+# Linux y ese flag en Box86 a veces dispara "Missing configuration".
+#
+# NOTA: el exit code de SteamCMD NO es confiable (devuelve 0 en varios errores).
+# Detectamos éxito verificando que exista el binario del server.
 log "Descargando Valheim dedicated server (AppID 896660). Esto tarda varios minutos..."
 set +e
-for attempt in 1 2 3; do
+for attempt in 1 2 3 4; do
+  log "Intento $attempt de 4..."
   sudo -u valheim "$VHOME/steamcmd_box86.sh" \
-    +@sSteamCmdForcePlatformType linux \
     +force_install_dir "$SERVER_DIR" \
     +login anonymous \
     +app_update 896660 validate \
     +quit
-  rc=$?
-  if [[ $rc -eq 0 ]]; then
+
+  if [[ -x "$SERVER_DIR/valheim_server.x86_64" ]]; then
     log "Valheim server descargado correctamente."
     break
   fi
-  warn "Intento $attempt: SteamCMD salio con codigo $rc. Reintentando en 10s..."
-  sleep 10
+
+  warn "Intento $attempt fallido. Limpiando caché de SteamCMD y reintentando..."
+  # El appcache es la causa mas frecuente de "Missing configuration" en reintentos.
+  sudo -u valheim rm -rf "$VHOME/Steam/appcache" "$VHOME/Steam/config/config.vdf.temp" 2>/dev/null || true
+  sleep $((attempt * 5))
 done
 set -e
 
 if [[ ! -x "$SERVER_DIR/valheim_server.x86_64" ]]; then
-  warn "La descarga automatica no completo. Podes reintentarla manualmente:"
+  warn "========================================================================"
+  warn "La descarga automatica no completo despues de 4 intentos."
+  warn "Reintenta manualmente con:"
+  warn ""
+  warn "    sudo -u valheim rm -rf /home/valheim/Steam/appcache"
   warn "    sudo -u valheim /home/valheim/update.sh"
-  warn "Si vuelve a fallar, probá sin 'set -e':"
-  warn "    sudo -u valheim /home/valheim/steamcmd_box86.sh +force_install_dir $SERVER_DIR +login anonymous +app_update 896660 validate +quit"
+  warn ""
+  warn "Si sigue fallando con 'Missing configuration', probá interactivo:"
+  warn "    sudo -u valheim /home/valheim/steamcmd/steamcmd.sh"
+  warn "    > force_install_dir /home/valheim/valheim-server"
+  warn "    > login anonymous"
+  warn "    > app_update 896660 validate"
+  warn "    > quit"
+  warn "========================================================================"
+else
+  log "OK: binario del server presente en $SERVER_DIR/valheim_server.x86_64"
 fi
 
 chown -R valheim:valheim "$VHOME"
