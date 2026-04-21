@@ -161,6 +161,13 @@ scp -i ~/Descargas/tu-clave.key ubuntu@TU_IP_PUBLICA:/home/valheim/backups/valhe
 
 - **`[BOX64] Error: File is not found. (./linux64/steamcmd)`:** SteamCMD es 32-bit, el binario correcto es `./linux32/steamcmd` y se corre con **Box86**, no Box64. Actualizá el script (`git pull`) y volvé a correrlo.
 
+- **`Update complete, launching...` y después muere / `Unit valheim-server.service not found`:** pasaba porque invocábamos el binario de SteamCMD directo en vez del wrapper `steamcmd.sh`, y el auto-update interno perdía `LD_LIBRARY_PATH` en el re-exec. El script actual usa `./steamcmd.sh` + binfmt y reintenta 3 veces. Si tu descarga quedó a mitad, reintentala con:
+  ```bash
+  sudo -u valheim /home/valheim/update.sh
+  ```
+
+- **`Package 'box86:armhf' has no installation candidate`:** correcto — `box86` es un virtual package, hay que pedir una variante (`box86-generic-arm`). Ya manejado.
+
 - **`E: Unable to locate package box64-generic-arm`:** warning inofensivo — el repo de Ryanfortner ya provee el paquete genérico `box64`. El script hace fallback automáticamente.
 
 - **`/usr/bin/env: 'bash\r': No such file or directory`:** el script tiene finales de línea de Windows (CRLF) en vez de Unix (LF). Suele pasar si bajaste/editaste los archivos en Windows. Fijalo con:

@@ -116,15 +116,17 @@ fi
 
 apt-get update -y
 apt-get install -y box64 || apt-get install -y box64-generic-arm
-apt-get install -y box86 || apt-get install -y box86-generic-arm
+# box86 es un "virtual package" — hay que pedir una variante concreta.
+apt-get install -y box86-generic-arm:armhf || apt-get install -y box86-generic-arm || apt-get install -y box86
 
 # Libs armhf que necesita Box86 para correr SteamCMD (32-bit) correctamente.
-log "Instalando libs armhf (runtime de Box86)..."
+log "Instalando libs armhf (runtime de Box86 + SteamCMD)..."
 apt-get install -y --no-install-recommends \
   libc6:armhf libstdc++6:armhf \
-  libcurl4-gnutls-dev:armhf || \
+  libcurl4-gnutls-dev:armhf \
+  libncurses6:armhf libtinfo6:armhf libsdl2-2.0-0:armhf || \
 apt-get install -y --no-install-recommends \
-  libc6:armhf libstdc++6:armhf
+  libc6:armhf libstdc++6:armhf libcurl4-gnutls-dev:armhf
 
 # ------- SteamCMD -------
 # En arm64 NO existe el paquete apt `steamcmd`. Bajamos el tarball oficial de Valve
@@ -138,33 +140,28 @@ if [[ ! -x "$STEAMCMD_DIR/linux32/steamcmd" ]]; then
     | tar zxf -"
 fi
 
-# Wrapper: steamcmd 32-bit -> Box86
+# Wrapper: usamos steamcmd.sh (el wrapper oficial de Valve) y dejamos que
+# binfmt_misc + Box86 se encarguen transparentemente del binario x86.
+# Invocar "box86 ./linux32/steamcmd" directamente rompe el auto-update interno
+# de SteamCMD (pierde LD_LIBRARY_PATH en el re-exec).
 cat > "$VHOME/steamcmd_box86.sh" <<'EOF'
 #!/usr/bin/env bash
 set -e
 export HOME=/home/valheim
-cd /home/valheim/steamcmd
-# Box86 necesita saber donde estan las libs armhf (path por defecto en ubuntu 22.04).
 export BOX86_LD_LIBRARY_PATH="/lib/arm-linux-gnueabihf:/usr/lib/arm-linux-gnueabihf:${BOX86_LD_LIBRARY_PATH:-}"
-exec box86 ./linux32/steamcmd "$@"
+cd /home/valheim/steamcmd
+exec ./steamcmd.sh "$@"
 EOF
 chmod +x "$VHOME/steamcmd_box86.sh"
 chown valheim:valheim "$VHOME/steamcmd_box86.sh"
 
-# Compat: si un run anterior creó steamcmd_box64.sh, lo removemos.
 rm -f "$VHOME/steamcmd_box64.sh"
 
 # ------- Descargar/actualizar Valheim dedicated server (AppID 896660) -------
+# Importante: hacemos esto DESPUES de instalar systemd, asi si la descarga falla
+# temporalmente el usuario puede reintentar con update.sh sin reinstalar todo.
 SERVER_DIR="$VHOME/valheim-server"
 sudo -u valheim mkdir -p "$SERVER_DIR"
-
-log "Descargando/Actualizando Valheim dedicated server (esto tarda unos minutos)..."
-sudo -u valheim "$VHOME/steamcmd_box86.sh" \
-  +@sSteamCmdForcePlatformType linux \
-  +force_install_dir "$SERVER_DIR" \
-  +login anonymous \
-  +app_update 896660 validate \
-  +quit
 
 # ------- Script de arranque -------
 START_SCRIPT="$VHOME/start_valheim.sh"
@@ -237,7 +234,39 @@ if ! iptables -C INPUT -p udp --dport 2456:2458 -j ACCEPT 2>/dev/null; then
 fi
 netfilter-persistent save || true
 
-# ------- Permisos finales -------
+# ------- Permisos correctos antes de descargar -------
+chown -R valheim:valheim "$VHOME"
+
+# ------- Descargar Valheim dedicated server (con reintentos) -------
+# Se hace AL FINAL, asi aunque la descarga falle (red, reintento de SteamCMD, etc.)
+# ya quedaron instalados systemd, firewall y update.sh. El usuario puede reintentar
+# con:   sudo -u valheim /home/valheim/update.sh
+log "Descargando Valheim dedicated server (AppID 896660). Esto tarda varios minutos..."
+set +e
+for attempt in 1 2 3; do
+  sudo -u valheim "$VHOME/steamcmd_box86.sh" \
+    +@sSteamCmdForcePlatformType linux \
+    +force_install_dir "$SERVER_DIR" \
+    +login anonymous \
+    +app_update 896660 validate \
+    +quit
+  rc=$?
+  if [[ $rc -eq 0 ]]; then
+    log "Valheim server descargado correctamente."
+    break
+  fi
+  warn "Intento $attempt: SteamCMD salio con codigo $rc. Reintentando en 10s..."
+  sleep 10
+done
+set -e
+
+if [[ ! -x "$SERVER_DIR/valheim_server.x86_64" ]]; then
+  warn "La descarga automatica no completo. Podes reintentarla manualmente:"
+  warn "    sudo -u valheim /home/valheim/update.sh"
+  warn "Si vuelve a fallar, probá sin 'set -e':"
+  warn "    sudo -u valheim /home/valheim/steamcmd_box86.sh +force_install_dir $SERVER_DIR +login anonymous +app_update 896660 validate +quit"
+fi
+
 chown -R valheim:valheim "$VHOME"
 
 # ------- Resumen -------
