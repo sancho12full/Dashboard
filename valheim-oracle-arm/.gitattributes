@@ -1,0 +1,7 @@
+# Forzar finales de línea LF en scripts y archivos de systemd.
+# Evita el error "/usr/bin/env: 'bash\r': No such file or directory"
+# al clonar desde Windows.
+*.sh            text eol=lf
+*.service       text eol=lf
+*.tmpl          text eol=lf
+install.sh      text eol=lf
