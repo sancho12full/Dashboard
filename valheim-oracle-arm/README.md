@@ -161,6 +161,21 @@ scp -i ~/Descargas/tu-clave.key ubuntu@TU_IP_PUBLICA:/home/valheim/backups/valhe
 
 - **`[BOX64] Error: File is not found. (./linux64/steamcmd)`:** SteamCMD es 32-bit, el binario correcto es `./linux32/steamcmd` y se corre con **Box86**, no Box64. Actualizá el script (`git pull`) y volvé a correrlo.
 
+- **El server arranca, dice `Opened Steam server` y `Connections 0`, pero no puedo conectarme desde el juego:** casi seguro es el firewall. Chequeá dos cosas:
+  1. **OCI Security List** (consola web) — UDP 2456-2458 abiertos con Source `0.0.0.0/0`.
+  2. **iptables en la VM** — Oracle Ubuntu trae una regla `REJECT` catch-all al final de la cadena `INPUT`. La regla ACCEPT de Valheim tiene que estar **antes** de ese REJECT, no después. Verificá con `sudo iptables -L INPUT --line-numbers -n`:
+     ```
+     5   ACCEPT  udp  ...  udp dpts:2456:2458   ← así SI
+     6   REJECT  all  ...  reject-with icmp-host-prohibited
+     ```
+     Si ves el ACCEPT en una posición mayor que el REJECT, fijalo con:
+     ```bash
+     while sudo iptables -D INPUT -m state --state NEW -p udp --dport 2456:2458 -j ACCEPT 2>/dev/null; do :; done
+     REJECT_LINE=$(sudo iptables -L INPUT --line-numbers -n | awk '/REJECT.*icmp-host-prohibited/ {print $1; exit}')
+     sudo iptables -I INPUT $REJECT_LINE -m state --state NEW -p udp --dport 2456:2458 -j ACCEPT
+     sudo netfilter-persistent save
+     ```
+
 - **`ERROR! Failed to install app '896660' (Missing configuration)`:** suele pasar por un appcache corrupto de un intento anterior, o por pasar `+@sSteamCmdForcePlatformType linux` (que Box86 a veces interpreta mal). El script ya NO usa ese flag y limpia `~/Steam/appcache` entre reintentos. Si te pasa corriendo a mano:
   ```bash
   sudo -u valheim rm -rf /home/valheim/Steam/appcache

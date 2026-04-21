@@ -228,11 +228,27 @@ systemctl daemon-reload
 systemctl enable valheim-server.service
 
 # ------- Firewall (iptables) -------
-log "Abriendo puertos UDP 2456-2458 en iptables..."
-if ! iptables -C INPUT -p udp --dport 2456:2458 -j ACCEPT 2>/dev/null; then
-  iptables -I INPUT 6 -m state --state NEW -p udp --dport 2456:2458 -j ACCEPT || \
+# Oracle Ubuntu viene con una regla REJECT "catch-all" en INPUT que tira
+# cualquier paquete no explicitamente aceptado antes. Por eso la regla de
+# Valheim tiene que insertarse ANTES de ese REJECT (si no, no llega nunca).
+log "Configurando iptables para UDP 2456-2458..."
+
+# Borrar cualquier copia previa (evita duplicados en re-runs del script).
+while iptables -D INPUT -m state --state NEW -p udp --dport 2456:2458 -j ACCEPT 2>/dev/null; do :; done
+while iptables -D INPUT -p udp --dport 2456:2458 -j ACCEPT 2>/dev/null; do :; done
+
+# Detectar la posicion del REJECT catch-all e insertar la regla JUSTO ANTES.
+REJECT_LINE="$(iptables -L INPUT --line-numbers -n 2>/dev/null \
+  | awk '/REJECT.*reject-with icmp-host-prohibited/ {print $1; exit}')"
+
+if [[ -n "$REJECT_LINE" ]]; then
+  log "Insertando regla ACCEPT en posicion $REJECT_LINE (antes del REJECT catch-all)..."
+  iptables -I INPUT "$REJECT_LINE" -m state --state NEW -p udp --dport 2456:2458 -j ACCEPT
+else
+  log "No hay REJECT catch-all en INPUT, agrego al final..."
   iptables -A INPUT -m state --state NEW -p udp --dport 2456:2458 -j ACCEPT
 fi
+
 netfilter-persistent save || true
 
 # ------- Permisos correctos antes de descargar -------
