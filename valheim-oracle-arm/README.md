@@ -2,7 +2,7 @@
 
 Guía paso a paso para montar un servidor dedicado de **Valheim** en una VM ARM de Oracle Cloud (Ampere A1).
 
-> **Importante sobre ARM64:** el servidor dedicado oficial de Valheim (SteamCMD AppID `896660`) **solo existe en x86_64**. No hay build nativa para ARM. La solución probada por la comunidad es ejecutarlo con **[Box64](https://github.com/ptitSeb/box64)**, un traductor binario x86_64→ARM64 muy eficiente (overhead típico ~5-15 %). Con tus 2 OCPU + 12 GB RAM funciona sobrado para 1-10 jugadores.
+> **Importante sobre ARM64:** el servidor dedicado oficial de Valheim (SteamCMD AppID `896660`) **solo existe en x86_64**. No hay build nativa para ARM. La solución probada por la comunidad es ejecutarlo con **[Box64](https://github.com/ptitSeb/box64)** (emulador x86_64→ARM64, overhead ~5-15 %). Además, **SteamCMD es un binario x86 de 32 bits**, así que se usa **[Box86](https://github.com/ptitSeb/box86)** para esa parte. El script instala ambos. Con tus 2 OCPU + 12 GB RAM rinde sobrado para 1-10 jugadores.
 
 ---
 
@@ -90,10 +90,10 @@ sudo ./install.sh
 El script hace todo esto de forma desatendida:
 
 1. Actualiza el sistema y crea el usuario de servicio `valheim`.
-2. Activa arquitectura **armhf** y repositorio **universe** (necesarios para Box64/SteamCMD).
-3. Instala **Box64** desde el repo oficial de Ryanfortner (builds para Ubuntu ARM64).
-4. Instala **SteamCMD**.
-5. Descarga el servidor dedicado de Valheim (AppID 896660) usando Box64.
+2. Activa arquitectura **armhf** y repositorios **universe** / **multiverse**.
+3. Instala **Box64** (para el server) y **Box86** (para SteamCMD) desde los repos oficiales de Ryanfortner.
+4. Descarga **SteamCMD** desde Valve y lo corre bajo Box86.
+5. Descarga el servidor dedicado de Valheim (AppID 896660) y lo ejecuta bajo Box64.
 6. Crea el script de arranque `start_valheim.sh` con tus variables.
 7. Instala y habilita el servicio **systemd** `valheim-server.service`.
 8. Abre los puertos UDP 2456-2458 en iptables y lo persiste.
@@ -156,6 +156,12 @@ scp -i ~/Descargas/tu-clave.key ubuntu@TU_IP_PUBLICA:/home/valheim/backups/valhe
 ---
 
 ## 9. Consejos y troubleshooting
+
+- **`Package 'steamcmd' has no installation candidate`:** correcto — en arm64 ese paquete no existe. El script ya lo maneja: baja el tarball oficial de Valve y lo ejecuta bajo Box86. Si te aparece al correr una versión vieja del script, reclona/pulleá la rama.
+
+- **`[BOX64] Error: File is not found. (./linux64/steamcmd)`:** SteamCMD es 32-bit, el binario correcto es `./linux32/steamcmd` y se corre con **Box86**, no Box64. Actualizá el script (`git pull`) y volvé a correrlo.
+
+- **`E: Unable to locate package box64-generic-arm`:** warning inofensivo — el repo de Ryanfortner ya provee el paquete genérico `box64`. El script hace fallback automáticamente.
 
 - **`/usr/bin/env: 'bash\r': No such file or directory`:** el script tiene finales de línea de Windows (CRLF) en vez de Unix (LF). Suele pasar si bajaste/editaste los archivos en Windows. Fijalo con:
   ```bash

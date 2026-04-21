@@ -86,11 +86,14 @@ if ! dpkg --print-foreign-architectures | grep -q armhf; then
 fi
 apt-get update -y
 
-# ------- Box64 -------
-log "Instalando Box64 (repo oficial de Ryanfortner)..."
-BOX64_LIST="/etc/apt/sources.list.d/box64.list"
-BOX64_KEY="/etc/apt/keyrings/box64.gpg"
+# ------- Box64 + Box86 (repos oficiales de Ryanfortner) -------
+# Box64 corre binarios x86_64 (Valheim server).
+# Box86 corre binarios x86 32-bit (SteamCMD, que es 32 bits).
+log "Instalando Box64 y Box86..."
 mkdir -p /etc/apt/keyrings
+
+BOX64_KEY="/etc/apt/keyrings/box64.gpg"
+BOX64_LIST="/etc/apt/sources.list.d/box64.list"
 if [[ ! -f "$BOX64_KEY" ]]; then
   curl -fsSL https://ryanfortner.github.io/box64-debs/KEY.gpg \
     | gpg --dearmor -o "$BOX64_KEY"
@@ -99,44 +102,64 @@ if [[ ! -f "$BOX64_LIST" ]]; then
   echo "deb [signed-by=$BOX64_KEY] https://ryanfortner.github.io/box64-debs/debian ./" \
     > "$BOX64_LIST"
 fi
+
+BOX86_KEY="/etc/apt/keyrings/box86.gpg"
+BOX86_LIST="/etc/apt/sources.list.d/box86.list"
+if [[ ! -f "$BOX86_KEY" ]]; then
+  curl -fsSL https://ryanfortner.github.io/box86-debs/KEY.gpg \
+    | gpg --dearmor -o "$BOX86_KEY"
+fi
+if [[ ! -f "$BOX86_LIST" ]]; then
+  echo "deb [signed-by=$BOX86_KEY] https://ryanfortner.github.io/box86-debs/debian ./" \
+    > "$BOX86_LIST"
+fi
+
 apt-get update -y
-apt-get install -y box64-generic-arm || apt-get install -y box64
+apt-get install -y box64 || apt-get install -y box64-generic-arm
+apt-get install -y box86 || apt-get install -y box86-generic-arm
+
+# Libs armhf que necesita Box86 para correr SteamCMD (32-bit) correctamente.
+log "Instalando libs armhf (runtime de Box86)..."
+apt-get install -y --no-install-recommends \
+  libc6:armhf libstdc++6:armhf \
+  libcurl4-gnutls-dev:armhf || \
+apt-get install -y --no-install-recommends \
+  libc6:armhf libstdc++6:armhf
 
 # ------- SteamCMD -------
-log "Instalando SteamCMD..."
-echo steam steam/question select "I AGREE" | debconf-set-selections
-echo steam steam/license note ''           | debconf-set-selections
-# steamcmd en arm64 se instala via i386? No: usamos el paquete steamcmd que trae los scripts
-# y el binario real se ejecuta bajo box64 mas abajo.
-apt-get install -y --no-install-recommends steamcmd || true
-
-# En ARM, `steamcmd` puede no correr nativo: preparamos un wrapper con box64.
+# En arm64 NO existe el paquete apt `steamcmd`. Bajamos el tarball oficial de Valve
+# y lo corremos bajo Box86 (SteamCMD es un binario x86 de 32 bits).
+log "Descargando SteamCMD desde Valve..."
 STEAMCMD_DIR="$VHOME/steamcmd"
 sudo -u valheim mkdir -p "$STEAMCMD_DIR"
-if [[ ! -f "$STEAMCMD_DIR/steamcmd.sh" ]]; then
-  log "Descargando SteamCMD (binarios x86_64)..."
+if [[ ! -x "$STEAMCMD_DIR/linux32/steamcmd" ]]; then
   sudo -u valheim bash -c "cd '$STEAMCMD_DIR' && \
-    curl -sSL https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz \
+    curl -fsSL https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz \
     | tar zxf -"
 fi
 
-# Wrapper para ejecutar steamcmd bajo box64
-cat > "$VHOME/steamcmd_box64.sh" <<'EOF'
+# Wrapper: steamcmd 32-bit -> Box86
+cat > "$VHOME/steamcmd_box86.sh" <<'EOF'
 #!/usr/bin/env bash
 set -e
 export HOME=/home/valheim
 cd /home/valheim/steamcmd
-exec box64 ./linux64/steamcmd "$@"
+# Box86 necesita saber donde estan las libs armhf (path por defecto en ubuntu 22.04).
+export BOX86_LD_LIBRARY_PATH="/lib/arm-linux-gnueabihf:/usr/lib/arm-linux-gnueabihf:${BOX86_LD_LIBRARY_PATH:-}"
+exec box86 ./linux32/steamcmd "$@"
 EOF
-chmod +x "$VHOME/steamcmd_box64.sh"
-chown valheim:valheim "$VHOME/steamcmd_box64.sh"
+chmod +x "$VHOME/steamcmd_box86.sh"
+chown valheim:valheim "$VHOME/steamcmd_box86.sh"
+
+# Compat: si un run anterior creó steamcmd_box64.sh, lo removemos.
+rm -f "$VHOME/steamcmd_box64.sh"
 
 # ------- Descargar/actualizar Valheim dedicated server (AppID 896660) -------
 SERVER_DIR="$VHOME/valheim-server"
 sudo -u valheim mkdir -p "$SERVER_DIR"
 
 log "Descargando/Actualizando Valheim dedicated server (esto tarda unos minutos)..."
-sudo -u valheim "$VHOME/steamcmd_box64.sh" \
+sudo -u valheim "$VHOME/steamcmd_box86.sh" \
   +@sSteamCmdForcePlatformType linux \
   +force_install_dir "$SERVER_DIR" \
   +login anonymous \
@@ -174,7 +197,7 @@ chown valheim:valheim "$START_SCRIPT"
 cat > "$VHOME/update.sh" <<EOF
 #!/usr/bin/env bash
 set -e
-exec "$VHOME/steamcmd_box64.sh" \\
+exec "$VHOME/steamcmd_box86.sh" \\
   +@sSteamCmdForcePlatformType linux \\
   +force_install_dir "$SERVER_DIR" \\
   +login anonymous \\
